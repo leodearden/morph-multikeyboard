@@ -30,6 +30,7 @@ sys.path.append('../sensel-api/sensel-lib-wrappers/sensel-lib-python')
 import sensel
 import binascii
 import threading
+import time
 
 
 class SenselError(Exception):
@@ -77,12 +78,12 @@ class Morph:
         self.close_on_error(sensel.startScanning(self.handle))
         return frame
 
-    def scan_frames(self):
+    def get_frame(self):
         self.close_on_error(sensel.readSensor(self.handle))
-        (error, num_frames) = sensel.getNumAvailableFrames(self.handle)
-        for i in range(num_frames):
-            self.close_on_error(sensel.getFrame(self.handle, self.frame))
-            print_frame(self.frame)
+        while self.close_on_error(sensel.getNumAvailableFrames(self.handle)) == 0:
+            time.sleep(0.05)
+        self.close_on_error(sensel.getFrame(self.handle, self.frame))
+        return self.frame
 
     def close_sensel(self):
         if self.handle is not None:
@@ -101,6 +102,7 @@ def wait_for_enter():
 
 
 def print_frame(frame):
+    assert frame
     if frame.n_contacts > 0:
         print("\nNum Contacts: ", frame.n_contacts)
         for n in range(frame.n_contacts):
@@ -115,6 +117,7 @@ if __name__ == "__main__":
     t = threading.Thread(target=wait_for_enter)
     t.start()
     while not enter_pressed:
-        morph.scan_frames()
+        print_frame(morph.get_frame())
+
     morph.close_sensel()
 
