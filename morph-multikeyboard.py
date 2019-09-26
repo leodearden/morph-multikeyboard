@@ -65,6 +65,8 @@ class Morph:
     def open(self, index=0):
         handle = None
         (error_num, device_list) = sensel.getDeviceList()
+        if error_num != 0:
+            raise SenselError(error_num)
         if device_list.num_devices > index:
             (error_num, handle) = sensel.openDeviceByID(device_list.devices[index].idx)
             if error_num != 0:
@@ -92,6 +94,17 @@ class Morph:
             warn_on_error(sensel.close(self.handle), 'close handle {}'.format(self.handle))
 
 
+def open_all_morphs():
+    (error_num, device_list) = sensel.getDeviceList()
+    if error_num != 0:
+        raise SenselError(error_num)
+    result = [
+        Morph(i)
+        for i in range(device_list.num_devices)
+    ]
+    return result
+
+
 # I don't like this kluge much, but leave it for now, 'til I:
 # TODO: set up an exit handler to replace threaded wait.
 def wait_for_enter():
@@ -112,12 +125,14 @@ def print_frame(frame):
 
 if __name__ == "__main__":
     enter_pressed = False
-    morph = Morph(1)
+    morphs = open_all_morphs()
 
     t = threading.Thread(target=wait_for_enter)
     t.start()
     while not enter_pressed:
-        print_frame(morph.get_frame())
+        for morph in morphs:
+            print_frame(morph.get_frame())
 
-    morph.close_sensel()
+    for morph in morphs:
+        morph.close_sensel()
 
