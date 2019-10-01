@@ -28,9 +28,8 @@ import sys
 
 sys.path.append('../sensel-api/sensel-lib-wrappers/sensel-lib-python')
 import sensel
-import binascii
-import threading
 import time
+import traceback
 
 
 class SenselError(Exception):
@@ -105,15 +104,6 @@ def open_all_morphs():
     return result
 
 
-# I don't like this kluge much, but leave it for now, 'til I:
-# TODO: set up an exit handler to replace threaded wait.
-def wait_for_enter():
-    global enter_pressed
-    input("Press Enter to exit...")
-    enter_pressed = True
-    return
-
-
 def print_frame(frame):
     assert frame
     if frame.n_contacts > 0:
@@ -124,15 +114,13 @@ def print_frame(frame):
 
 
 if __name__ == "__main__":
-    enter_pressed = False
     morphs = open_all_morphs()
-
-    t = threading.Thread(target=wait_for_enter)
-    t.start()
-    while not enter_pressed:
+    assert morphs
+    try:
+        while True:
+            for morph in morphs:
+                print_frame(morph.get_frame())
+    except BaseException as e:
+        print('caught {} at {}. Exiting.'.format(e, traceback.print_tb(e.__traceback__)))
         for morph in morphs:
-            print_frame(morph.get_frame())
-
-    for morph in morphs:
-        morph.close_sensel()
-
+            morph.close_sensel()
