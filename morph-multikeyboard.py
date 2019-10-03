@@ -116,14 +116,24 @@ class Morph:
         contact_frames = []
         # this would be easier to write and read as nested comprehensions, but harder to debug
         for frame in frames:
+            lost = frame.lost_frame_count
+            if lost:
+                logger.info('{} lost frames since previous frame'.format(lost))
             contact_frame = {}
-            for contact in frame.contacts:
-                contact_frame[contact.id] = {
-                    'state': contact.state,
-                    'x_pos': contact.x_pos,
-                    'y_pos': contact.y_pos,
-                }
-            contact_frames.append(contact_frame)
+            for i, contact in enumerate(frame.contacts):
+                logger.debug('processing contact {} (id {}, state {}, x_pos {}, y_pos {}'.format(i,
+                                                                                                 contact.id,
+                                                                                                 contact.state,
+                                                                                                 contact.x_pos,
+                                                                                                 contact.y_pos))
+                if contact.state != sensel.CONTACT_INVALID:
+                    contact_frame[contact.id] = {
+                        'state': contact.state,
+                        'x_pos': contact.x_pos,
+                        'y_pos': contact.y_pos,
+                    }
+            if contact_frame:
+                contact_frames.append(contact_frame)
         return contact_frames
 
     def close (self):
@@ -272,10 +282,11 @@ class Keyboard():
         }
 
     def process_contacts(self):
-        contacts = self.morph.get_contact_frames()
-        for id, contact in contacts.items():
-            for key in self.layout.items():
-                key(shapely.geometry.Point(contact.x_pos, contact.y_pos))
+        contact_frames = self.morph.get_contact_frames()
+        for contacts in contact_frames:
+            for id, contact in contacts.items():
+                for key in self.layout.items():
+                    key(shapely.geometry.Point(contact.x_pos, contact.y_pos))
 
 
 if __name__ == "__main__":
