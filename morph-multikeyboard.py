@@ -120,7 +120,7 @@ class Morph:
             if lost:
                 logger.info('{} lost frames since previous frame'.format(lost))
             contact_frame = {}
-            for i, contact in enumerate(frame.contacts):
+            for i, contact in enumerate(itertools.islice(frame.contacts, frame.n_contacts)):
                 logger.debug('processing contact {} (id {}, state {}, x_pos {}, y_pos {}'.format(i,
                                                                                                  contact.id,
                                                                                                  contact.state,
