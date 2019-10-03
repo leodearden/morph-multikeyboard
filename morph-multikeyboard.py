@@ -98,20 +98,33 @@ class Morph:
         return frame
 
     def get_frame(self):
-        logger.debug('getting frame from Morph {}'.format(self.serial_num))
-        while self.close_on_error(sensel.getNumAvailableFrames(self.handle)) == 0:
-            self.close_on_error(sensel.readSensor(self.handle))
-            time.sleep(0.05)
+        logger.debug('getting frame into {} on handle {}'.format(self.frame, self.handle))
         self.close_on_error(sensel.getFrame(self.handle, self.frame))
         return self.frame
 
-    def get_contacts(self):
-        frame = self.get_frame()
-        contacts = {
-            contact.id: contact
-            for contact in frame.contacts
-        }
-        return contacts
+    def read_frames(self):
+        logger.debug('getting frame from Morph {}'.format(self.serial_num))
+        logger.debug('reading frames from sensor.')
+        self.close_on_error(sensel.readSensor(self.handle))
+        logger.debug('checking available frames...')
+        available_frames = self.close_on_error(sensel.getNumAvailableFrames(self.handle))
+        logger.debug('{} frames available'.format(available_frames))
+        return (self.get_frame() for _ in range(available_frames))
+
+    def get_contact_frames(self):
+        frames = self.read_frames()
+        contact_frames = []
+        # this would be easier to write and read as nested comprehensions, but harder to debug
+        for frame in frames:
+            contact_frame = {}
+            for contact in frame.contacts:
+                contact_frame[contact.id] = {
+                    'state': contact.state,
+                    'x_pos': contact.x_pos,
+                    'y_pos': contact.y_pos,
+                }
+            contact_frames.append(contact_frame)
+        return contact_frames
 
     def close (self):
         if self.handle is not None:
@@ -259,7 +272,7 @@ class Keyboard():
         }
 
     def process_contacts(self):
-        contacts = self.morph.get_contacts()
+        contacts = self.morph.get_contact_frames()
         for id, contact in contacts.items():
             for key in self.layout.items():
                 key(shapely.geometry.Point(contact.x_pos, contact.y_pos))
@@ -276,6 +289,8 @@ if __name__ == "__main__":
 
     try:
         while True:
+            # for morph in morphs:
+            #     print_frame(morph.get_frame())
             for keyboard in keyboards:
                 keyboard.process_contacts()
     except BaseException as e:
