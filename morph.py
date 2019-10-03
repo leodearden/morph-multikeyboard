@@ -35,6 +35,7 @@ import logging
 import itertools
 import shapely.geometry
 import pyautogui
+import keyboard
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
