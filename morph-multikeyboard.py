@@ -46,9 +46,11 @@ class SenselError(Exception):
         self.error_num = error_num
 
 
-def warn_on_error(error_num, explaination=''):
+def log_and_warn_on_error(error_num, explanation=''):
     if error_num != 0:
-        logging.error('Error detected during sensel operation {} ({})'.format(explaination, error_num))
+        logging.error('Error detected during sensel operation {} ({})'.format(explanation, error_num))
+    else:
+        logger.debug('Success: {}'.format(explanation))
 
 
 class Morph:
@@ -66,7 +68,7 @@ class Morph:
             val = None
         if error_num != 0:
             logging.error('Error detected. Closing')
-            self.close_sensel()
+            self.close()
             raise SenselError(error_num)
         return val
 
@@ -96,8 +98,9 @@ class Morph:
         return frame
 
     def get_frame(self):
-        self.close_on_error(sensel.readSensor(self.handle))
+        logger.debug('getting frame from Morph {}'.format(self.serial_num))
         while self.close_on_error(sensel.getNumAvailableFrames(self.handle)) == 0:
+            self.close_on_error(sensel.readSensor(self.handle))
             time.sleep(0.05)
         self.close_on_error(sensel.getFrame(self.handle, self.frame))
         return self.frame
@@ -110,11 +113,17 @@ class Morph:
         }
         return contacts
 
-    def close_sensel(self):
+    def close (self):
         if self.handle is not None:
-            warn_on_error(sensel.stopScanning(self.handle), 'stop scanning before close')
-            warn_on_error(sensel.freeFrameData(self.handle, self.frame), 'free frame data before close')
-            warn_on_error(sensel.close(self.handle), 'close handle {}'.format(self.handle))
+            log_and_warn_on_error(sensel.stopScanning(self.handle),
+                                  'stop scanning before close for {}'.format(self.serial_num))
+            log_and_warn_on_error(sensel.freeFrameData(self.handle, self.frame),
+                                  'free frame data before close for {}'.format(self.serial_num))
+            log_and_warn_on_error(sensel.close(self.handle),
+                                  'close handle for {} ({})'.format(self.serial_num, self.handle))
+            self.handle = None
+        else:
+            logger.debug('Attempt to close Morph {} with None handle (already closed?)'.format(self.serial_num))
 
 
 def open_all_morphs():
@@ -272,4 +281,4 @@ if __name__ == "__main__":
     except BaseException as e:
         logging.error('caught {} at {}. Exiting.'.format(e, traceback.print_tb(e.__traceback__)))
         for morph in morphs:
-            morph.close_sensel()
+            morph.close()
