@@ -3,20 +3,26 @@ import itertools
 import pyautogui
 import xml.etree.ElementTree as ET
 import logging
-
+import sys
+sys.path.append('../sensel-api/sensel-lib-wrappers/sensel-lib-python')
+import sensel
+import threading
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
+pyautogui.PAUSE = 0
 
 def gen_gen_simple_key_handler(key_code):
     def gen_simple_key_hander(polygon: shapely.geometry.Polygon):
 
         def key_up():
+            logger.debug('sending keyUp({})'.format(key_code))
             pyautogui.keyUp(key_code)
 
         def handler(p: shapely.geometry.Point):
             if polygon.contains(p):
+                logger.debug('sending keyDown({})'.format(key_code))
                 pyautogui.keyDown(key_code)
                 return key_up
             else:
@@ -80,11 +86,15 @@ def parse_layout(file_name, keymaps):
 
 
 class Keyboard():
-    def __init__(self, morph, layout_file):
+    def __init__(self, morph, layout_file, tag=''):
         self.morph = morph
         self.keymaps = self.generate_keymaps()
         self.layouts = parse_layout(layout_file, self.keymaps)
         self.layout = self.layouts['base']
+        self.contact_end_handlers = {}
+        self.interpreter_thread = threading.Thread(name='keyboard-interpreter{}'.format(tag),
+                                                   target=self.process_all_contacts)
+        self.interpreter_thread.start()
 
     def generate_keymaps(self):
         keymap = {}
@@ -126,8 +136,29 @@ class Keyboard():
         }
 
     def process_contacts(self):
-        contact_frames = self.morph.get_contact_frames()
+        contact_frames = self.morph.contact_frames.get()
         for contacts in contact_frames:
             for id, contact in contacts.items():
-                for key in self.layout.items():
-                    key(shapely.geometry.Point(contact.x_pos, contact.y_pos))
+                if contact['state'] == sensel.CONTACT_START or contact['state'] == sensel.CONTACT_END:
+                    contact_point = shapely.geometry.Point(contact['x_pos'], contact['y_pos'])
+                if contact['state'] == sensel.CONTACT_START:
+                    logger.debug('New contact detected. Calling handlers.')
+                    for contact_handler in self.layout.items():
+                        result = contact_handler(contact_point)
+                        if result:
+                            if self.contact_end_handlers[id]:
+                                logger.info('Untriggered end handler for contact ID'
+                                            ' {}. Missed key up? Triggering.'.format(id))
+                                self.contact_end_handlers[id]()
+                            self.contact_end_handlers[id] = result
+                            break
+                elif contact['state'] == sensel.CONTACT_END:
+                    logger.debug('Contact end received for ID {}. Calling end handler.'.format(id))
+                    self.contact_end_handlers[id]()
+                    del self.contact_end_handlers[id]
+                # else ignore the contact (for now) - it is either invalid or has simply moved (a drag)
+        self.morph.contact_frames.task_done()
+
+    def process_all_contacts(self):
+        while True:
+            self.process_contacts()

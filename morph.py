@@ -33,12 +33,12 @@ import sensel
 import traceback
 import logging
 import itertools
-import pyautogui
+import threading
+import queue
+from time import sleep
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-pyautogui.PAUSE = 0.05
 
 class SenselError(Exception):
     def __init__(self, error_num):
@@ -53,11 +53,14 @@ def log_and_warn_on_error(error_num, explanation=''):
 
 
 class Morph:
-    def __init__(self, index=0):
+    def __init__(self, index=0, tag=''):
         self.handle = self.open(index)
         self.frame = self.init_frame()
         # self.info is not currently used, but this is how to get it. Let's take a look and see what info we get
         self.info = self.close_on_error(sensel.getSensorInfo(self.handle))
+        self.contact_frames = queue.Queue(maxsize=1024)
+        # self.reader_thread = threading.Thread(name='morph-reader{}'.format(tag), target=self.get_all_contact_frames)
+        # self.reader_thread.start()
 
     def close_on_error(self, retval):
         try:
@@ -112,7 +115,6 @@ class Morph:
 
     def get_contact_frames(self):
         frames = self.read_frames()
-        contact_frames = []
         # this would be easier to write and read as nested comprehensions, but harder to debug
         for frame in frames:
             lost = frame.lost_frame_count
@@ -132,11 +134,15 @@ class Morph:
                         'y_pos': contact.y_pos,
                     }
             if contact_frame:
-                contact_frames.append(contact_frame)
-        return contact_frames
+                self.contact_frames.put(contact_frame)
+
+    def get_all_contact_frames(self):
+        while True:
+            self.get_contact_frames()
 
     def close (self):
         if self.handle is not None:
+
             log_and_warn_on_error(sensel.stopScanning(self.handle),
                                   'stop scanning before close for {}'.format(self.serial_num))
             log_and_warn_on_error(sensel.freeFrameData(self.handle, self.frame),
@@ -153,10 +159,22 @@ def open_all_morphs():
     if error_num != 0:
         raise SenselError(error_num)
     result = [
-        Morph(i)
+        Morph(i, tag='-{}'.format(i))
         for i in range(device_list.num_devices)
     ]
     return result
+
+
+def forever_read_all_morphs(morphs):
+    try:
+        while True:
+            for morph in morphs:
+                morph.get_contact_frames()
+    except BaseException as e:
+        logging.error('caught {} at {}. Exiting.'.format(e, traceback.print_tb(e.__traceback__)))
+        for morph in morphs:
+            morph.close()
+
 
 
 def print_frame(frame):
@@ -176,14 +194,4 @@ if __name__ == "__main__":
         Keyboard(morph, layout_file)
         for morph, layout_file in zip(morphs, ['morph-dvorak-left.svg', 'morph-dvorak-right.svg'])
     ]
-
-    try:
-        while True:
-            # for morph in morphs:
-            #     print_frame(morph.get_frame())
-            for keyboard in keyboards:
-                keyboard.process_contacts()
-    except BaseException as e:
-        logging.error('caught {} at {}. Exiting.'.format(e, traceback.print_tb(e.__traceback__)))
-        for morph in morphs:
-            morph.close()
+    forever_read_all_morphs(morphs)
